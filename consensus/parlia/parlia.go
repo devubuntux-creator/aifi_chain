@@ -84,7 +84,7 @@ const (
 	gasLimitBoundDivisorBeforeLorentz uint64 = 256 // The bound divisor of the gas limit, used in update calculations before lorentz hard fork.
 
 	// `finalityRewardInterval` should be smaller than `inMemorySnapshots`, otherwise, it will result in excessive computation.
-	finalityRewardInterval = 200
+	// finalityRewardInterval = 200 // Disabled for performance reasons
 
 	kAncestorGenerationDepth = 3
 )
@@ -1280,77 +1280,80 @@ func (p *Parlia) verifyTurnLength(chain consensus.ChainHeaderReader, header *typ
 func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, state vm.StateDB, header *types.Header,
 	cx core.ChainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction,
 	usedGas *uint64, mining bool, tracer *tracing.Hooks) error {
-	currentHeight := header.Number.Uint64()
-	if currentHeight%finalityRewardInterval != 0 {
-		return nil
-	}
+	// The finality reward logic is disabled to prevent periodic performance issues
+	// caused by expensive backward traversal and snapshot retrieval.
+	return nil
+	// currentHeight := header.Number.Uint64()
+	// if currentHeight%finalityRewardInterval != 0 {
+	// 	return nil
+	// }
 
-	head := header
-	accumulatedWeights := make(map[common.Address]uint64)
-	for height := currentHeight - 1; height+finalityRewardInterval >= currentHeight && height >= 1; height-- {
-		head = chain.GetHeaderByHash(head.ParentHash)
-		if head == nil {
-			return fmt.Errorf("header is nil at height %d", height)
-		}
-		epochLength, err := p.epochLength(chain, head, nil)
-		if err != nil {
-			return err
-		}
-		voteAttestation, err := getVoteAttestationFromHeader(head, chain.Config(), epochLength)
-		if err != nil {
-			return err
-		}
-		if voteAttestation == nil {
-			continue
-		}
-		justifiedBlock := chain.GetHeaderByHash(voteAttestation.Data.TargetHash)
-		if justifiedBlock == nil {
-			log.Warn("justifiedBlock is nil at height %d", voteAttestation.Data.TargetNumber)
-			continue
-		}
+	// head := header
+	// accumulatedWeights := make(map[common.Address]uint64)
+	// for height := currentHeight - 1; height+finalityRewardInterval >= currentHeight && height >= 1; height-- {
+	// 	head = chain.GetHeaderByHash(head.ParentHash)
+	// 	if head == nil {
+	// 		return fmt.Errorf("header is nil at height %d", height)
+	// 	}
+	// 	epochLength, err := p.epochLength(chain, head, nil)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	voteAttestation, err := getVoteAttestationFromHeader(head, chain.Config(), epochLength)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	if voteAttestation == nil {
+	// 		continue
+	// 	}
+	// 	justifiedBlock := chain.GetHeaderByHash(voteAttestation.Data.TargetHash)
+	// 	if justifiedBlock == nil {
+	// 		log.Warn("justifiedBlock is nil at height %d", voteAttestation.Data.TargetNumber)
+	// 		continue
+	// 	}
 
-		snap, err := p.snapshot(chain, justifiedBlock.Number.Uint64()-1, justifiedBlock.ParentHash, nil)
-		if err != nil {
-			return err
-		}
-		validators := snap.validators()
-		validatorsBitSet := bitset.From([]uint64{uint64(voteAttestation.VoteAddressSet)})
-		if validatorsBitSet.Count() > uint(len(validators)) {
-			log.Error("invalid attestation, vote number larger than validators number")
-			continue
-		}
-		validVoteCount := 0
-		for index, val := range validators {
-			if validatorsBitSet.Test(uint(index)) {
-				accumulatedWeights[val] += 1
-				validVoteCount += 1
-			}
-		}
-		quorum := cmath.CeilDiv(len(snap.Validators)*2, 3)
-		if validVoteCount > quorum {
-			accumulatedWeights[head.Coinbase] += uint64((validVoteCount - quorum) * collectAdditionalVotesRewardRatio / 100)
-		}
-	}
+	// 	snap, err := p.snapshot(chain, justifiedBlock.Number.Uint64()-1, justifiedBlock.ParentHash, nil)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	validators := snap.validators()
+	// 	validatorsBitSet := bitset.From([]uint64{uint64(voteAttestation.VoteAddressSet)})
+	// 	if validatorsBitSet.Count() > uint(len(validators)) {
+	// 		log.Error("invalid attestation, vote number larger than validators number")
+	// 		continue
+	// 	}
+	// 	validVoteCount := 0
+	// 	for index, val := range validators {
+	// 		if validatorsBitSet.Test(uint(index)) {
+	// 			accumulatedWeights[val] += 1
+	// 			validVoteCount += 1
+	// 		}
+	// 	}
+	// 	quorum := cmath.CeilDiv(len(snap.Validators)*2, 3)
+	// 	if validVoteCount > quorum {
+	// 		accumulatedWeights[head.Coinbase] += uint64((validVoteCount - quorum) * collectAdditionalVotesRewardRatio / 100)
+	// 	}
+	// }
 
-	validators := make([]common.Address, 0, len(accumulatedWeights))
-	weights := make([]*big.Int, 0, len(accumulatedWeights))
-	for val := range accumulatedWeights {
-		validators = append(validators, val)
-	}
-	sort.Sort(validatorsAscending(validators))
-	for _, val := range validators {
-		weights = append(weights, big.NewInt(int64(accumulatedWeights[val])))
-	}
+	// validators := make([]common.Address, 0, len(accumulatedWeights))
+	// weights := make([]*big.Int, 0, len(accumulatedWeights))
+	// for val := range accumulatedWeights {
+	// 	validators = append(validators, val)
+	// }
+	// sort.Sort(validatorsAscending(validators))
+	// for _, val := range validators {
+	// 	weights = append(weights, big.NewInt(int64(accumulatedWeights[val])))
+	// }
 
-	// generate system transaction
-	method := "distributeFinalityReward"
-	data, err := p.validatorSetABI.Pack(method, validators, weights)
-	if err != nil {
-		log.Error("Unable to pack tx for distributeFinalityReward", "error", err)
-		return err
-	}
-	msg := p.getSystemMessage(header.Coinbase, common.HexToAddress(systemcontracts.ValidatorContract), data, common.Big0)
-	return p.applyTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, mining, tracer)
+	// // generate system transaction
+	// method := "distributeFinalityReward"
+	// data, err := p.validatorSetABI.Pack(method, validators, weights)
+	// if err != nil {
+	// 	log.Error("Unable to pack tx for distributeFinalityReward", "error", err)
+	// 	return err
+	// }
+	// msg := p.getSystemMessage(header.Coinbase, common.HexToAddress(systemcontracts.ValidatorContract), data, common.Big0)
+	// return p.applyTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, mining, tracer)
 }
 
 func (p *Parlia) EstimateGasReservedForSystemTxs(chain consensus.ChainHeaderReader, header *types.Header) uint64 {
