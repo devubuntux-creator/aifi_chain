@@ -531,7 +531,7 @@ func (api *BlockChainAPI) GetBlockByHash(ctx context.Context, hash common.Hash, 
 
 func (api *BlockChainAPI) Health() bool {
 	if rpc.RpcServingTimer != nil {
-		return rpc.RpcServingTimer.Snapshot().Percentile(0.75) < float64(UnHealthyTimeout)
+		return rpc.RpcServingTimer.Snapshot().Percentile(0.5) < float64(UnHealthyTimeout)
 	}
 	return true
 }

@@ -60,7 +60,7 @@ const (
 	maxwellEpochLength   uint64 = 1000 // Epoch length starting from the Maxwell hard fork
 	defaultBlockInterval uint64 = 3000 // Default block interval in milliseconds
 	lorentzBlockInterval uint64 = 1500 // Block interval starting from the Lorentz hard fork
-	maxwellBlockInterval uint64 = 750  // Block interval starting from the Maxwell hard fork
+	maxwellBlockInterval uint64 = 500  // Block interval starting from the Maxwell hard fork
 	fermiBlockInterval   uint64 = 450  // Block interval starting from the Fermi hard fork
 	defaultTurnLength    uint8  = 1    // Default consecutive number of blocks a validator receives priority for block production
 
