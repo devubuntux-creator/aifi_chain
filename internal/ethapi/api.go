@@ -120,6 +120,9 @@ func (api *EthereumAPI) FeeHistory(ctx context.Context, blockCount math.HexOrDec
 		for i, w := range reward {
 			results.Reward[i] = make([]*hexutil.Big, len(w))
 			for j, v := range w {
+				if v == nil || v.Sign() == 0 {
+					v = big.NewInt(1e9)
+				}
 				results.Reward[i][j] = (*hexutil.Big)(v)
 			}
 		}
