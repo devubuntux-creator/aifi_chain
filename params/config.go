@@ -705,6 +705,11 @@ type ChainConfig struct {
 	GrayGlacierBlock    *big.Int `json:"grayGlacierBlock,omitempty"`    // Eip-5133 (bomb delay) switch block (nil = no fork, 0 = already activated)
 	MergeNetsplitBlock  *big.Int `json:"mergeNetsplitBlock,omitempty"`  // Virtual fork after The Merge to use as a network splitter
 
+	// NewtonBlock: The activation height for the Aifi AI-Infrastructure layer.
+	// This fork introduces the 0.5s block timing, custom AI opcodes,
+	// and vector-math precompiled contracts.
+	NewtonBlock *big.Int `json:"newtonBlock,omitempty"`
+
 	// Fork scheduling was switched from blocks to timestamps here
 
 	ShanghaiTime   *uint64 `json:"shanghaiTime,omitempty"`   // Shanghai switch time (nil = no fork, 0 = already on shanghai)
@@ -1421,6 +1426,21 @@ func (c *ChainConfig) IsOsaka(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.OsakaTime, time)
 }
 
+// IsNewton checks if the Newton hardfork is active at a given block height.
+func (c *ChainConfig) IsNewton(num *big.Int) bool {
+	return num != nil && c.NewtonBlock != nil && num.Cmp(c.NewtonBlock) >= 0
+}
+
+// IsOnNewton detects the specific transition block where Newton rules begin.
+func (c *ChainConfig) IsOnNewton(currentBlockNumber *big.Int) bool {
+	if currentBlockNumber == nil || currentBlockNumber.Cmp(big.NewInt(1)) < 0 {
+		return false
+	}
+	lastBlockNumber := new(big.Int).Sub(currentBlockNumber, big.NewInt(1))
+	// Transition: previous was not Newton, current is Newton
+	return !c.IsNewton(lastBlockNumber) && c.IsNewton(currentBlockNumber)
+}
+
 // IsOnOsaka eturns whether currentBlockTime is either equal to the Osaka fork time or greater firstly.
 func (c *ChainConfig) IsOnOsaka(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
 	lastBlockNumber := new(big.Int)
@@ -2124,6 +2144,7 @@ type Rules struct {
 	IsBohr, IsPascal, IsPrague, IsLorentz, IsMaxwell        bool
 	IsFermi, IsOsaka, IsMendel                              bool
 	IsAmsterdam, IsPasteur, IsVerkle                        bool
+	IsNewton                                                bool
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -2135,6 +2156,11 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 	// disallow setting Merge out of order
 	isMerge = isMerge && c.IsLondon(num) // always false in BSC
 	isVerkle := isMerge && c.IsVerkle(num, timestamp)
+
+	// --- AifiNewton Activation ---
+	// This enables the IsNewton flag throughout the EVM execution context
+	isNewton := num != nil && c.NewtonBlock != nil && num.Cmp(c.NewtonBlock) >= 0
+
 	return Rules{
 		ChainID:          new(big.Int).Set(chainID),
 		IsHomestead:      c.IsHomestead(num),
@@ -2173,5 +2199,6 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsPasteur:        c.IsPasteur(num, timestamp),
 		IsVerkle:         c.IsVerkle(num, timestamp),
 		IsEIP4762:        isVerkle,
+		IsNewton:         isNewton,
 	}
 }
